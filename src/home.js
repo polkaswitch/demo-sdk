@@ -2,30 +2,37 @@ import { useEffect, useState } from "react";
 import ChainContainer from "./components/Chain";
 import InputContainer from "./components/Input";
 import TokenContainer from "./components/Token";
-import { useSdk } from "./hooks/usdSdk";
 import useAuth from "./hooks/useAuth";
+import SwingSDK from "@swing.xyz/sdk";
+import BigNumber from "bignumber.js";
+
+const sdk = new SwingSDK();
 
 const Home = () => {
   const { account, chainId, connect } = useAuth();
-  const { chains, tokens } = useSdk();
-  const [fromChain, setFromChain] = useState({ chainId: 1 });
-  const [toChain, setToChain] = useState({ chainId: 1 });
-  const [fromTokens, setFromTokens] = useState([]);
-  const [toTokens, setToTokens] = useState([]);
+  const [chains, setChains] = useState([]);
+  const [fromChain, setFromChain] = useState();
+  const [toChain, setToChain] = useState();
   const [fromToken, setFromToken] = useState();
   const [toToken, setToToken] = useState();
+  const [amount, setAmount] = useState(0);
 
   useEffect(() => {
-    const fromTokenList = [...tokens].filter((t) => Number(t.chainId) === Number(fromChain.chainId));
-    setFromTokens(fromTokenList);
+    sdk.init().then(() => {
+      setChains(sdk.chains);
+      setFromChain(sdk.chains[0]);
+      setToChain(sdk.chains[0]);
+    });
+  }, []);
+
+  useEffect(() => {
+    if (fromChain) setFromToken(fromChain.tokens[0]);
   }, [fromChain]);
 
   useEffect(() => {
-    const toTokenList = [...tokens].filter((t) => Number(t.chainId) === Number(toChain.chainId));
-    setToTokens(toTokenList);
+    if (toChain) setToToken(toChain.tokens[0]);
   }, [toChain]);
 
-  console.log('FromToken:', fromToken);
   const onChangeFromChain = (e) => {
     const chain = chains.find((c) => Number(c.chainId) === Number(e.target.value));
     setFromChain(chain);
@@ -35,21 +42,61 @@ const Home = () => {
     setToChain(chain);
   };
   const onChangeFromToken = (e) => {
-    const token = fromTokens.find((t) => t.address === e.target.value);
+    const token = fromChain.tokens.find((t) => t.address === e.target.value);
     setFromToken(token);
   };
   const onChangeToToken = (e) => {
-    const token = fromTokens.find((t) => t.address === e.target.value);
+    const token = toChain.tokens.find((t) => t.address === e.target.value);
     setToToken(token);
   };
 
   const getButtonName = () => {
     if (!account) return 'Connect Wallet';
-    if (Number(fromChain.chainId) !== Number(chainId)) return `Switch to ${fromChain?.name || 'Ethereum'}`;
+    if (Number(fromChain?.chainId) !== Number(chainId)) return `Switch to ${fromChain?.name || 'Ethereum'}`;
     return 'Send';
   };
-  const onClick = () => {
-    if (!account) return connect();
+
+  const onChangeAmount = (e) => {
+    setAmount(Number(e.target.value));
+  };
+
+  const onClick = async () => {
+    if (!account) {
+      console.log('Please connect to account');
+      return connect();
+    }
+    
+    if (!fromChain || !toChain || !fromToken || !toToken || !amount) {
+      console.log('Please check chain and tokens');
+      return;
+    }
+
+    const tokenAmount = new BigNumber(amount).times(10 ** fromToken.decimal);
+
+    const transferParams = {
+      fromChain: fromChain.slug,
+      toChain: toChain.slug,
+    
+      fromToken: fromToken.symbol,
+      toToken: toToken.symbol,
+    
+      amount: tokenAmount.toString(),
+    
+      fromUserAddress: account,
+      toUserAddress: account,
+    };
+
+    console.log('Sending params...', transferParams);
+    await sdk.wallet.connect(window.ethereum);
+
+    console.log('Getting quote...');
+    const quote = await sdk.getQuote(transferParams);
+
+    console.log('Quote:', quote);
+    const transferRoute = quote.routes[0];
+
+    console.log('Sending transfer...', transferRoute);
+    await sdk.transfer(transferRoute, transferParams);
   };
 
   return (
@@ -62,13 +109,12 @@ const Home = () => {
           <div className="w-1/2 flex flex-col gap-4">
             <p>From</p>
             <ChainContainer data={chains} onChange={onChangeFromChain} />
-            <TokenContainer data={fromTokens} onChange={onChangeFromToken} />
-            {fromToken && <span className="text-center text-sm">0.00 {fromToken.symbol}</span>}
+            <TokenContainer data={fromChain?.tokens} onChange={onChangeFromToken} />
           </div>
           <div className="w-1/2 flex flex-col gap-4">
             <p>To</p>
             <ChainContainer data={chains} onChange={onChangeToChain} />
-            <TokenContainer data={toTokens} onChange={onChangeToToken} />
+            <TokenContainer data={toChain?.tokens} onChange={onChangeToToken} />
           </div>
         </div>
 
@@ -77,7 +123,7 @@ const Home = () => {
             <p>Amount <span className="p-2 font-bold bg-stone-400 rounded-xl text-white cursor-pointer">Max</span></p>
           </div>
           <div className="w-1/2 flex flex-col gap-4">
-            <InputContainer />
+            <InputContainer onChange={onChangeAmount} />
           </div>
         </div>
 
