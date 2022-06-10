@@ -93,7 +93,7 @@ const Home = () => {
     const quote = await sdk.getQuote(transferParams);
 
     console.log('Quote:', quote);
-    const transferRoute = quote.routes[0];
+    const transferRoute = quote.routes[0].route;
 
     console.log('Sending transfer...', transferRoute);
     await sdk.transfer(transferRoute, transferParams);
