@@ -5,6 +5,7 @@ import TokenContainer from "./components/Token";
 import useAuth from "./hooks/useAuth";
 import SwingSDK from "@swing.xyz/sdk";
 import BigNumber from "bignumber.js";
+import { ethers } from "ethers";
 
 const sdk = new SwingSDK();
 
@@ -87,13 +88,26 @@ const Home = () => {
     };
 
     console.log('Sending params...', transferParams);
-    await sdk.wallet.connect(window.ethereum);
+    if (window.ethereum !== 'undefined') {
+      const provider = new ethers.providers.Web3Provider(window.ethereum);
+      await sdk.wallet.connect(provider);
+    } else {
+      alert("Provider is not available");
+      return;
+    }
 
     console.log('Getting quote...');
     const quote = await sdk.getQuote(transferParams);
 
     console.log('Quote:', quote);
     const transferRoute = quote.routes[0].route;
+
+    sdk.on('TRANSFER', async (transferStatus) => {
+      console.log(transferStatus.error)
+      if (transferStatus.step === 'approve' && transferStatus.status === 'FAILED') {
+        alert(transferStatus.error)
+      }
+    });
 
     console.log('Sending transfer...', transferRoute);
     await sdk.transfer(transferRoute, transferParams);
